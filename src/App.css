@@ -38,6 +38,11 @@
   color: #61dafb;
 }
 
+.form-container {
+  width: 100%;
+  max-width: 600px;
+}
+
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
