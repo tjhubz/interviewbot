@@ -16,11 +16,15 @@ import {
   Textarea,
   Container,
   Heading,
+  HStack,
+  Select,
+  Spinner,
 } from "@chakra-ui/react";
-import Conversation from "./components/Conversation";
+import { useConversation, AudioDeviceConfig, ConversationConfig } from "vocode";
+import MicrophoneIcon from "./components/MicrophoneIcon";
+import AudioVisualization from "./components/AudioVisualization";
+import { isMobile } from "react-device-detect";
 
-import { isChrome, isMobile, isSafari } from "react-device-detect";
-import { WarningIcon } from "@chakra-ui/icons";
 import {
   ChatGPTAgentConfig,
   DeepgramTranscriberConfig,
@@ -28,11 +32,124 @@ import {
   VocodeConfig,
 } from "vocode";
 
+const Conversation = ({
+  config,
+}: {
+  config: Omit<ConversationConfig, "audioDeviceConfig">;
+}) => {
+  const [audioDeviceConfig, setAudioDeviceConfig] =
+    React.useState<AudioDeviceConfig>({});
+  const [inputDevices, setInputDevices] = React.useState<MediaDeviceInfo[]>([]);
+  const [outputDevices, setOutputDevices] = React.useState<MediaDeviceInfo[]>(
+    []
+  );
+  const { status, start, stop, analyserNode } = useConversation(
+    Object.assign(config, { audioDeviceConfig })
+  );
+
+  React.useEffect(() => {
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((devices) => {
+        setInputDevices(
+          devices.filter(
+            (device) => device.deviceId && device.kind === "audioinput"
+          )
+        );
+        setOutputDevices(
+          devices.filter(
+            (device) => device.deviceId && device.kind === "audiooutput"
+          )
+        );
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  });
+
+  return (
+    <>
+      {analyserNode && <AudioVisualization analyser={analyserNode} />}
+      <Button
+        variant="link"
+        disabled={["connecting", "error"].includes(status)}
+        onClick={status === "connected" ? stop : start}
+        position={"absolute"}
+        top={"45%"}
+        left={"50%"}
+        transform={"translate(-50%, -50%)"}
+      >
+        <Box boxSize={75}>
+          <MicrophoneIcon color={"#ddfafa"} muted={status !== "connected"} />
+        </Box>
+      </Button>
+      <Box boxSize={50} />
+      {status === "connecting" && (
+        <Box
+          position={"absolute"}
+          top="57.5%"
+          left="50%"
+          transform={"translate(-50%, -50%)"}
+          padding={5}
+        >
+          <Spinner color="#FFFFFF" />
+        </Box>
+      )}
+      {!isMobile && (
+        <HStack width="96%" position="absolute" top={"10%"} left="2%">
+          {inputDevices.length > 0 && (
+            <Select
+              color={"#FFFFFF"}
+              disabled={["connecting", "connected"].includes(status)}
+              onChange={(event) =>
+                setAudioDeviceConfig({
+                  ...audioDeviceConfig,
+                  inputDeviceId: event.target.value,
+                })
+              }
+              value={audioDeviceConfig.inputDeviceId}
+            >
+              {inputDevices.map((device, i) => {
+                return (
+                  <option key={i} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                );
+              })}
+            </Select>
+          )}
+          {outputDevices.length > 0 && (
+            <Select
+              color={"#FFFFFF"}
+              disabled
+              onChange={(event) =>
+                setAudioDeviceConfig({
+                  ...audioDeviceConfig,
+                  outputDeviceId: event.target.value,
+                })
+              }
+              value={audioDeviceConfig.outputDeviceId}
+            >
+              {outputDevices.map((device, i) => {
+                return (
+                  <option key={i} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                );
+              })}
+            </Select>
+          )}
+        </HStack>
+      )}
+    </>
+  );
+};
+
 const App = () => {
   const [formValues, setFormValues] = React.useState({
     position: "",
     company: "",
-    highlights: "",
+    questions: "",
   });
 
   const [startInterview, setStartInterview] = React.useState(false);
@@ -74,11 +191,21 @@ const App = () => {
 
   const agentConfig: ChatGPTAgentConfig = {
     type: "agent_chat_gpt",
-    initialMessage: { type: "message_base", text: "Hello! How are you today?" },
-    promptPreamble: `As an expert interviewer at ${formValues.company}, engage with the user who is applying for the ${formValues.position} role in a human-like manner. Begin by asking basic overview questions to understand the applicant's background and motivations. Gradually transition into asking more specific questions tailored to their resume highlights (${formValues.highlights}) and the common questions associated with the specific role. Incorporate your knowledge about ${formValues.company} to further customize the interview experience. Maintain a professional and polite demeanor throughout the conversation, embracing a conversational tone and engaging in small talk when appropriate. For instance, when asked about your well-being, respond with "I'm doing well, thank you." Utilize the applicant's resume highlights, the specific job role, and ${formValues.company}'s values to challenge them accordingly and assess their problem-solving skills, teamwork capabilities, and other relevant competencies. Encourage the user to share real-life examples and experiences to create a more realistic and immersive interview environment. Be empathetic and understanding, adapting your responses to their emotions and making them feel comfortable throughout the process. Ensure that the conversation flows naturally while covering essential topics related to the position and company culture, allowing the applicant to showcase their strengths and demonstrate their fit within the organization.`,
-    endConversationOnGoodbye: false,
+    initialMessage: { type: "message_base", text: "Hello! Are you ready to begin your case interview?" },
+    promptPreamble: `As an expert case interviewer at ${formValues.company}, engage with the user who is applying for the ${formValues.position}. You communicate in a natural, conversational manner, making the interviewer feel comfortable, and closely mimic the style of a real-life case interviewer from major consulting companies such as McKinsey, Boston Consulting Group, and Bain.
+    Be aware that you are being used to communicate with people in real time, and the person you are interviewing will hear your text, while their spoken responses will be transcribed for you. Conduct a detailed case interview with the following components:
+    1. Introduce the case scenario in a friendly and engaging way, including the client's industry, company size, and market dynamics.
+    2. Present the client's specific problem or challenge that they are seeking to address.
+    3. Describe any relevant data, facts, or constraints related to the case.
+    4. Ask the interviewee to analyze the situation, develop a structured approach, and provide recommendations to solve the client's problem. Encourage them to think out loud, ask clarifying questions, and discuss their thought process throughout the case.
+    5. After every ${formValues.questions} questions, provide feedback and constructive criticism on the interviewee's performance in a supportive manner, focusing on their problem-solving approach, communication skills, and recommendations.
+    6. Provide prompts or hints if the interviewee requires redirection or gets stuck, while maintaining a positive and encouraging tone.
+    7. Conclude the case by summarizing the interviewee's recommendations and discussing any additional insights or considerations, ensuring the interviewer feels valued and appreciated for their efforts.
+    8. When you are done giving feedback, say "goodbye" to end the conversation.`,
+    endConversationOnGoodbye: true,
     generateResponses: true,
     cutOffResponse: {},
+    modelName: "gpt-4",
   };
 
   return (
@@ -98,7 +225,7 @@ const App = () => {
             TJ's AI Interview Assistant
           </Heading>
           <Text fontSize="lg" textAlign="center" mb={8}>
-            This application helps you practice job interviews by having a conversation with an AI. Fill out the form below with the position, company, and some highlights from your resume to begin the interview process.
+            This application helps you practice case interviews by having a conversation with an AI. Fill out the form below with the position, company, and the number of questions before the AI provides feedback.
           </Text>
           <Container centerContent className="form-container">
             <form onSubmit={handleSubmit}>
@@ -120,11 +247,12 @@ const App = () => {
                   onChange={handleChange}
                 />
               </FormControl>
-              <FormControl id="highlights" isRequired mb={4}>
-                <FormLabel>Resume Highlights</FormLabel>
-                <Textarea
-                  name="highlights"
-                  value={formValues.highlights}
+              <FormControl id="questions" isRequired mb={4}>
+                <FormLabel>Number of Questions</FormLabel>
+                <Input
+                  type="text"
+                  name="questions"
+                  value={formValues.questions}
                   onChange={handleChange}
                 />
               </FormControl>
