@@ -1,3 +1,3 @@
-# vocode React demo
+# TJ's Interview Bot
 
-[demo.vocode.dev](https://demo.vocode.dev)
+[interview.tjh.app](https://interview.tjh.app)
